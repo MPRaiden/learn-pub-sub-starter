@@ -8,6 +8,11 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+const (
+	QueueTypeDurable   = 0
+	QueueTypeTransient = 1
+)
+
 func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 
 	jsonVal, err := json.Marshal(val)
@@ -26,4 +31,37 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	}
 
 	return nil
+}
+
+func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int) (*amqp.Channel, amqp.Queue, error) {
+	ch, err := conn.Channel()
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("Error while creating channel, %v", err)
+	}
+
+	var durable bool
+	var autodelete bool
+	var exclusive bool
+
+	if simpleQueueType == QueueTypeDurable {
+		durable = true
+		autodelete = false
+		exclusive = false
+	} else {
+		durable = false
+		autodelete = true
+		exclusive = true
+	}
+
+	newQ, err := ch.QueueDeclare(queueName, durable, autodelete, exclusive, false, nil)
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("Error while declaring queue, %v", err)
+	}
+
+	err = ch.QueueBind(newQ.Name, key, exchange, false, nil)
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("Error while binding queue, %v", err)
+	}
+
+	return ch, newQ, nil
 }
