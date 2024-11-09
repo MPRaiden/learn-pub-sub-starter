@@ -40,7 +40,48 @@ func main() {
 
 	waitCh := make(chan os.Signal, 1)
 	signal.Notify(waitCh, os.Interrupt)
-	<-waitCh
+
+	gameState := gamelogic.NewGameState(username)
+	isRunning := true
+	for isRunning {
+		select {
+		case <-waitCh:
+			isRunning = false
+			fmt.Println("Interupt signal received, bye bye...")
+		default:
+			input := gamelogic.GetInput()
+			if len(input) == 0 {
+				fmt.Println("Please provide some input...pretty please")
+				continue
+			} else {
+				if input[0] == "spawn" {
+					err := gameState.CommandSpawn(input)
+					if err != nil {
+						fmt.Printf("Error while spawning a command, yes really..., %v", err)
+					}
+				} else if input[0] == "move" {
+					_, err := gameState.CommandMove(input)
+					if err != nil {
+						fmt.Printf("Unsuccessful command move, please try again... %v", err)
+					} else {
+						fmt.Println("Move successful...")
+					}
+				} else if input[0] == "status" {
+					gameState.CommandStatus()
+				} else if input[0] == "help" {
+					gamelogic.PrintClientHelp()
+				} else if input[0] == "spam" {
+					fmt.Println("Spamming not allowed yet!")
+				} else if input[0] == "quit" {
+					gamelogic.PrintQuit()
+					isRunning = false
+				} else {
+					fmt.Println("Please enter valid command...")
+				}
+			}
+
+		}
+	}
 
 	defer ch.Close()
 }
