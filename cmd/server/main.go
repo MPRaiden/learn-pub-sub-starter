@@ -42,6 +42,17 @@ func main() {
 		log.Fatalf("Failed to declare exchange: %v", err)
 	}
 
+	ch, q, err := pubsub.DeclareAndBind(
+		connection,
+		routing.ExchangePerilTopic,
+		"game_logs",
+		"game_logs.*",
+		pubsub.QueueTypeDurable)
+	if err != nil {
+		log.Fatalf("Error while declaring and binding queue, %v", err)
+	}
+	fmt.Printf("Queue created: %+v\n", q) // This will print the queue details
+
 	// wait for terminate signal (ctrl+c)
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
@@ -66,6 +77,7 @@ func main() {
 				} else if input[0] == "quit" {
 					fmt.Println("Exiting...")
 					isRunning = false
+					break
 				} else {
 					fmt.Println("Unknown command, please try: pause, resume or quit")
 				}
