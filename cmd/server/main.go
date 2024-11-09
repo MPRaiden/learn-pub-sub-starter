@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -20,6 +21,7 @@ func main() {
 	defer connection.Close()
 
 	fmt.Println("Great success, connected to localhost: 5672")
+	gamelogic.PrintServerHelp()
 
 	ch, err := connection.Channel()
 	if err != nil {
@@ -40,11 +42,35 @@ func main() {
 		log.Fatalf("Failed to declare exchange: %v", err)
 	}
 
-	pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
-
-	// wait for ctrl+c
+	// wait for terminate signal (ctrl+c)
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
-	<-signalChan
-	fmt.Println("Connection terminated, bye bye...")
+
+	isRunning := true
+	for isRunning {
+
+		select {
+		case <-signalChan:
+			isRunning = false
+		default:
+			input := gamelogic.GetInput()
+			if len(input) == 0 {
+				continue
+			} else {
+				if input[0] == "pause" {
+					fmt.Println("Sending pause message...")
+					pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
+				} else if input[0] == "resume" {
+					fmt.Println("Sending resume message...")
+					pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
+				} else if input[0] == "quit" {
+					fmt.Println("Exiting...")
+					isRunning = false
+				} else {
+					fmt.Println("Unknown command, please try: pause, resume or quit")
+				}
+			}
+		}
+	}
+	fmt.Println("Received connection terminal signal, connection terminated, bye bye...")
 }
