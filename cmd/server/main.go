@@ -44,7 +44,7 @@ func main() {
 
 	ch, q, err := pubsub.DeclareAndBind(
 		connection,
-		routing.ExchangePerilTopic,
+		routing.ExchangePerilDirect,
 		"game_logs",
 		"game_logs.*",
 		pubsub.QueueTypeDurable)

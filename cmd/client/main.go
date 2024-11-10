@@ -42,6 +42,8 @@ func main() {
 	signal.Notify(waitCh, os.Interrupt)
 
 	gameState := gamelogic.NewGameState(username)
+
+	pubsub.SubscribeJSON(connection, routing.ExchangePerilDirect, queueName, routing.PauseKey, pubsub.QueueTypeTransient, handlerPause(gameState))
 	isRunning := true
 	for isRunning {
 		select {
