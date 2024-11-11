@@ -16,7 +16,6 @@ const (
 )
 
 func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
-
 	jsonVal, err := json.Marshal(val)
 	if err != nil {
 		return fmt.Errorf("Error while marshalling json, %v", err)

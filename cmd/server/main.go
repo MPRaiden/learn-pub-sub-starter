@@ -13,45 +13,33 @@ import (
 )
 
 func main() {
-	connectionString := "amqp://guest:guest@localhost:5672/"
-	connection, err := amqp.Dial(connectionString)
+	rabbitmqConnectionString := "amqp://guest:guest@localhost:5672/"
+
+	connection, err := amqp.Dial(rabbitmqConnectionString)
 	if err != nil {
-		log.Fatalf("Error while connecting to localhost:5672, %v", err)
+		log.Fatalf("Error while connecting to Rabittmq, %v", err)
 	}
 	defer connection.Close()
 
 	fmt.Println("Great success, connected to localhost: 5672")
-	gamelogic.PrintServerHelp()
 
-	ch, err := connection.Channel()
+	publishChannel, err := connection.Channel()
 	if err != nil {
 		log.Fatalf("Error while creating a channel on the connection, %v", err)
 	}
 
-	// Add this exchange declaration
-	err = ch.ExchangeDeclare(
-		routing.ExchangePerilDirect, // name
-		"direct",                    // type
-		false,                       // durable
-		false,                       // auto-deleted
-		false,                       // internal
-		false,                       // no-wait
-		nil,                         // arguments
-	)
-	if err != nil {
-		log.Fatalf("Failed to declare exchange: %v", err)
-	}
-
-	ch, q, err := pubsub.DeclareAndBind(
+	_, q, err := pubsub.DeclareAndBind(
 		connection,
-		routing.ExchangePerilDirect,
-		"game_logs",
-		"game_logs.*",
+		routing.ExchangePerilTopic,
+		routing.GameLogSlug,
+		routing.GameLogSlug+".*",
 		pubsub.QueueTypeDurable)
 	if err != nil {
 		log.Fatalf("Error while declaring and binding queue, %v", err)
 	}
 	fmt.Printf("Queue created: %+v\n", q) // This will print the queue details
+
+	gamelogic.PrintServerHelp()
 
 	// wait for terminate signal (ctrl+c)
 	signalChan := make(chan os.Signal, 1)
@@ -70,10 +58,16 @@ func main() {
 			} else {
 				if input[0] == "pause" {
 					fmt.Println("Sending pause message...")
-					pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
+					err := pubsub.PublishJSON(publishChannel, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
+					if err != nil {
+						log.Printf("Could not pause game, %v", err)
+					}
 				} else if input[0] == "resume" {
 					fmt.Println("Sending resume message...")
-					pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
+					err := pubsub.PublishJSON(publishChannel, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
+					if err != nil {
+						log.Printf("Coult no resume game, %v", err)
+					}
 				} else if input[0] == "quit" {
 					fmt.Println("Exiting...")
 					isRunning = false

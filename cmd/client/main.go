@@ -21,29 +21,42 @@ func main() {
 	defer connection.Close()
 	fmt.Println("Even greater success, connection established, well done mr. Client sir")
 
+	publishChannel, err := connection.Channel()
+	if err != nil {
+		log.Fatalf("Unable to create channel: %v", err)
+	}
+
 	username, err := gamelogic.ClientWelcome()
 	if err != nil {
 		log.Fatalf("Error while welcoming client, %v", err)
 	}
-
-	queueName := routing.PauseKey + "." + username
-	ch, q, err := pubsub.DeclareAndBind(
-		connection,
-		routing.ExchangePerilDirect,
-		queueName,
-		routing.PauseKey,
-		pubsub.QueueTypeTransient)
-	if err != nil {
-		log.Fatalf("Error while declaring and binding queue, %v", err)
-	}
-	fmt.Printf("Queue created: %+v\n", q) // This will print the queue details
+	gameState := gamelogic.NewGameState(username)
 
 	waitCh := make(chan os.Signal, 1)
 	signal.Notify(waitCh, os.Interrupt)
 
-	gameState := gamelogic.NewGameState(username)
+	err = pubsub.SubscribeJSON(connection,
+		routing.ExchangePerilTopic,
+		routing.ArmyMovesPrefix+"."+gameState.GetUsername(),
+		"army_moves.*",
+		pubsub.QueueTypeTransient,
+		handlerMove(gameState))
+	if err != nil {
+		log.Fatalf("Unable to subscribe to army move, %v", err)
+	}
 
-	pubsub.SubscribeJSON(connection, routing.ExchangePerilDirect, queueName, routing.PauseKey, pubsub.QueueTypeTransient, handlerPause(gameState))
+	err = pubsub.SubscribeJSON(
+		connection,
+		routing.ExchangePerilDirect,
+		routing.PauseKey+"."+gameState.GetUsername(),
+		routing.PauseKey,
+		pubsub.QueueTypeTransient,
+		handlerPause(gameState))
+	if err != nil {
+		log.Fatalf("Unable to subscribe to game pause, %v", err)
+	}
+
+	// Enter repl
 	isRunning := true
 	for isRunning {
 		select {
@@ -62,12 +75,23 @@ func main() {
 						fmt.Printf("Error while spawning a command, yes really..., %v", err)
 					}
 				} else if input[0] == "move" {
-					_, err := gameState.CommandMove(input)
+					mv, err := gameState.CommandMove(input)
 					if err != nil {
-						fmt.Printf("Unsuccessful command move, please try again... %v", err)
-					} else {
-						fmt.Println("Move successful...")
+						fmt.Println(err)
+						continue
 					}
+
+					err = pubsub.PublishJSON(
+						publishChannel,
+						routing.ExchangePerilTopic,
+						routing.ArmyMovesPrefix+"."+mv.Player.Username,
+						mv,
+					)
+					if err != nil {
+						fmt.Printf("error: %s\n", err)
+						continue
+					}
+					fmt.Printf("Moved %v units to %s\n", len(mv.Units), mv.ToLocation)
 				} else if input[0] == "status" {
 					gameState.CommandStatus()
 				} else if input[0] == "help" {
@@ -81,16 +105,6 @@ func main() {
 					fmt.Println("Please enter valid command...")
 				}
 			}
-
 		}
-	}
-
-	defer ch.Close()
-}
-
-func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
-	return func(msg routing.PlayingState) {
-		defer fmt.Print("> ")
-		gs.HandlePause(msg)
 	}
 }
