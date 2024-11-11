@@ -44,7 +44,7 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simp
 	var autodelete bool
 	var exclusive bool
 
-	if simpleQueueType == QueueTypeDurable {
+	if simpleQueueType == QueueTypeDurable { //NOTE: Only two type are possible because of the constants defined at top of file
 		durable = true
 		autodelete = false
 		exclusive = false
