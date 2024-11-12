@@ -15,6 +15,14 @@ const (
 	QueueTypeTransient SimpleQueueType = 1
 )
 
+type AckType int
+
+const (
+	Ack AckType = iota
+	NackRequeue
+	NackDiscard
+)
+
 func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	jsonVal, err := json.Marshal(val)
 	if err != nil {
@@ -73,7 +81,7 @@ func SubscribeJSON[T any](
 	queueName,
 	key string,
 	simpleQueueType SimpleQueueType,
-	handler func(T),
+	handler func(T) AckType,
 ) error {
 	ch, queue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
 	if err != nil {
@@ -85,16 +93,27 @@ func SubscribeJSON[T any](
 		return fmt.Errorf("Error while consuming channel, %v", err)
 	}
 
-	go func() {
+	go func() error {
+		//TODO: Investigate why there dont get logged
 		for delivery := range deliveryChannels {
 			var msg T
 			err := json.Unmarshal(delivery.Body, &msg)
 			if err != nil {
-				fmt.Printf("Error while unmarshalling json, %v$", err)
+				return fmt.Errorf("Error while unmarshalling json, %v", err)
 			}
-			handler(msg)
-			delivery.Ack(false)
+			ack := handler(msg)
+			if ack == Ack {
+				delivery.Ack(false)
+				fmt.Println("Message acknowleded...")
+			} else if ack == NackRequeue {
+				delivery.Nack(false, true)
+				fmt.Println("Message not delivered, trying again...")
+			} else {
+				delivery.Nack(false, false)
+				fmt.Println("Message not delivered, discarding...")
+			}
 		}
+		return nil
 	}()
 
 	return nil
