@@ -11,8 +11,8 @@ import (
 type SimpleQueueType int
 
 const (
-	QueueTypeDurable   SimpleQueueType = 0
-	QueueTypeTransient SimpleQueueType = 1
+	SimpleQueueDurable SimpleQueueType = iota
+	SimpleQueueTransient
 )
 
 type AckType int
@@ -48,31 +48,34 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simp
 		return nil, amqp.Queue{}, fmt.Errorf("Error while creating channel, %v", err)
 	}
 
-	var durable bool
-	var autodelete bool
-	var exclusive bool
-
-	if simpleQueueType == QueueTypeDurable { //NOTE: Only two type are possible because of the constants defined at top of file
-		durable = true
-		autodelete = false
-		exclusive = false
-	} else {
-		durable = false
-		autodelete = true
-		exclusive = true
-	}
-
-	newQ, err := ch.QueueDeclare(queueName, durable, autodelete, exclusive, false, nil)
+	queue, err := ch.QueueDeclare(
+		queueName,                             // name
+		simpleQueueType == SimpleQueueDurable, // durable
+		simpleQueueType != SimpleQueueDurable, // delete when unused
+		simpleQueueType != SimpleQueueDurable, // exclusive
+		false,                                 // no-wait
+		amqp.Table{
+			"x-dead-letter-exchange": "peril_dlx",
+		},
+	)
 	if err != nil {
 		return nil, amqp.Queue{}, fmt.Errorf("Error while declaring queue, %v", err)
 	}
 
-	err = ch.QueueBind(newQ.Name, key, exchange, false, nil)
+	err = ch.QueueBind(
+		queue.Name,
+		key,
+		exchange,
+		false,
+		amqp.Table{
+			"x-dead-letter-exchange": "peril_dlx",
+		},
+	)
 	if err != nil {
 		return nil, amqp.Queue{}, fmt.Errorf("Error while binding queue, %v", err)
 	}
 
-	return ch, newQ, nil
+	return ch, queue, nil
 }
 
 func SubscribeJSON[T any](
@@ -85,36 +88,48 @@ func SubscribeJSON[T any](
 ) error {
 	ch, queue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
 	if err != nil {
-		return fmt.Errorf("Error while declaring and binding, %v", err)
+		return fmt.Errorf("could not declare and bind queue: %v", err)
 	}
 
-	deliveryChannels, err := ch.Consume(queue.Name, "", false, false, false, false, nil)
+	msgs, err := ch.Consume(
+		queue.Name, // queue
+		"",         // consumer
+		false,      // auto-ack
+		false,      // exclusive
+		false,      // no-local
+		false,      // no-wait
+		nil,        // args
+	)
 	if err != nil {
-		return fmt.Errorf("Error while consuming channel, %v", err)
+		return fmt.Errorf("could not consume messages: %v", err)
 	}
 
-	go func() error {
-		//TODO: Investigate why there dont get logged
-		for delivery := range deliveryChannels {
-			var msg T
-			err := json.Unmarshal(delivery.Body, &msg)
+	unmarshaller := func(data []byte) (T, error) {
+		var target T
+		err := json.Unmarshal(data, &target)
+		return target, err
+	}
+
+	go func() {
+		defer ch.Close()
+		for msg := range msgs {
+			target, err := unmarshaller(msg.Body)
 			if err != nil {
-				return fmt.Errorf("Error while unmarshalling json, %v", err)
+				fmt.Printf("could not unmarshal message: %v\n", err)
+				continue
 			}
-			ack := handler(msg)
-			if ack == Ack {
-				delivery.Ack(false)
-				fmt.Println("Message acknowleded...")
-			} else if ack == NackRequeue {
-				delivery.Nack(false, true)
-				fmt.Println("Message not delivered, trying again...")
-			} else {
-				delivery.Nack(false, false)
-				fmt.Println("Message not delivered, discarding...")
+			switch handler(target) {
+			case Ack:
+				msg.Ack(false)
+				fmt.Println("Ack")
+			case NackDiscard:
+				msg.Nack(false, false)
+				fmt.Println("NackDiscard")
+			case NackRequeue:
+				msg.Nack(false, true)
+				fmt.Println("NackRequeue")
 			}
 		}
-		return nil
 	}()
-
 	return nil
 }

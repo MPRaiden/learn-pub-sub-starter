@@ -39,7 +39,7 @@ func main() {
 		routing.ExchangePerilTopic,
 		routing.ArmyMovesPrefix+"."+gameState.GetUsername(),
 		"army_moves.*",
-		pubsub.QueueTypeTransient,
+		pubsub.SimpleQueueTransient,
 		handlerMove(gameState))
 	if err != nil {
 		log.Fatalf("Unable to subscribe to army move, %v", err)
@@ -50,7 +50,7 @@ func main() {
 		routing.ExchangePerilDirect,
 		routing.PauseKey+"."+gameState.GetUsername(),
 		routing.PauseKey,
-		pubsub.QueueTypeTransient,
+		pubsub.SimpleQueueTransient,
 		handlerPause(gameState))
 	if err != nil {
 		log.Fatalf("Unable to subscribe to game pause, %v", err)

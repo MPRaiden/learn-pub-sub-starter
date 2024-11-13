@@ -33,10 +33,12 @@ func main() {
 		routing.ExchangePerilTopic,
 		routing.GameLogSlug,
 		routing.GameLogSlug+".*",
-		pubsub.QueueTypeDurable)
+		pubsub.SimpleQueueDurable)
 	if err != nil {
 		log.Fatalf("Error while declaring and binding queue, %v", err)
 	}
+
+	fmt.Println("hellllloooooo")
 	fmt.Printf("Queue created: %+v\n", q) // This will print the queue details
 
 	gamelogic.PrintServerHelp()
