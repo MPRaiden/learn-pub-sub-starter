@@ -40,7 +40,7 @@ func main() {
 		routing.ArmyMovesPrefix+"."+gameState.GetUsername(),
 		"army_moves.*",
 		pubsub.SimpleQueueTransient,
-		handlerMove(gameState))
+		handlerMove(gameState, publishChannel))
 	if err != nil {
 		log.Fatalf("Unable to subscribe to army move, %v", err)
 	}
@@ -55,6 +55,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("Unable to subscribe to game pause, %v", err)
 	}
+
+	err = pubsub.SubscribeJSON(
+		connection,
+		routing.ExchangePerilTopic,
+		routing.WarRecognitionsPrefix,
+		routing.WarRecognitionsPrefix+".*",
+		pubsub.SimpleQueueDurable,
+		handlerWar(gameState),
+	)
 
 	// Enter repl
 	isRunning := true

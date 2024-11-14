@@ -67,9 +67,7 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simp
 		key,
 		exchange,
 		false,
-		amqp.Table{
-			"x-dead-letter-exchange": "peril_dlx",
-		},
+		nil,
 	)
 	if err != nil {
 		return nil, amqp.Queue{}, fmt.Errorf("Error while binding queue, %v", err)
