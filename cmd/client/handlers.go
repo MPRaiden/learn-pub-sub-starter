@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -51,20 +52,60 @@ func handlerMove(gs *gamelogic.GameState, publishChannel *amqp.Channel) func(gam
 	}
 }
 
-func handlerWar(gs *gamelogic.GameState) func(dw gamelogic.RecognitionOfWar) pubsub.AckType {
+func handlerWar(gs *gamelogic.GameState, ch *amqp.Channel) func(dw gamelogic.RecognitionOfWar) pubsub.AckType {
 	return func(dw gamelogic.RecognitionOfWar) pubsub.AckType {
 		defer fmt.Print("> ")
 
 		outcome, _, _ := gs.HandleWar(dw)
+
+		routingKey := routing.GameLogSlug + "." + gs.GetUsername()
+		pubsub.PublishGob(ch, routing.ExchangePerilTopic, routingKey, routing.GameLog{CurrentTime: time.Now(), Message: "", Username: ""})
+
 		switch outcome {
 		case gamelogic.WarOutcomeNotInvolved:
-			return pubsub.NackRequeue
+			return pubsub.Ack
+
 		case gamelogic.WarOutcomeNoUnits:
-			return pubsub.NackDiscard
+			return pubsub.Ack
+
 		case gamelogic.WarOutcomeYouWon:
-			return pubsub.Ack
+			_, winner, loser := gs.HandleWar(dw)
+			err := pubsub.PublishGob(ch, routing.ExchangePerilTopic, routingKey,
+				routing.GameLog{
+					CurrentTime: time.Now(),
+					Message:     fmt.Sprintf("%s won a war against %s", winner, loser),
+					Username:    gs.GetUsername(),
+				})
+			if err != nil {
+				return pubsub.Ack
+			}
+			return pubsub.NackRequeue
+
 		case gamelogic.WarOutcomeDraw:
-			return pubsub.Ack
+			_, winner, loser := gs.HandleWar(dw)
+			err := pubsub.PublishGob(ch, routing.ExchangePerilTopic, routingKey,
+				routing.GameLog{
+					CurrentTime: time.Now(),
+					Message:     fmt.Sprintf("A war between %s and %s resulted in a draw", winner, loser),
+					Username:    gs.GetUsername(),
+				})
+			if err != nil {
+				return pubsub.Ack
+			}
+			return pubsub.NackRequeue
+
+		case gamelogic.WarOutcomeOpponentWon:
+			_, winner, loser := gs.HandleWar(dw)
+			err := pubsub.PublishGob(ch, routing.ExchangePerilTopic, routingKey,
+				routing.GameLog{
+					CurrentTime: time.Now(),
+					Message:     fmt.Sprintf("%s won a war agains %s", loser, winner),
+					Username:    gs.GetUsername(),
+				})
+			if err != nil {
+				return pubsub.Ack
+			}
+			return pubsub.NackRequeue
 		}
 
 		fmt.Printf("Error: Unknown war outcome")
