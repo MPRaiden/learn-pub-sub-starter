@@ -100,6 +100,73 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simp
 	return ch, queue, nil
 }
 
+func SubscribeGob[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	simpleQueueType SimpleQueueType,
+	handler func(T) AckType,
+) error {
+	ch, queue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
+	if err != nil {
+		return fmt.Errorf("could not declare and bind queue: %v", err)
+	}
+
+	msgs, err := ch.Consume(
+		queue.Name, // queue
+		"",         // consumer
+		false,      // auto-ack
+		false,      // exclusive
+		false,      // no-local
+		false,      // no-wait
+		nil,        // args
+	)
+	if err != nil {
+		return fmt.Errorf("could not consume messages: %v", err)
+	}
+
+	unmarshaller := func(data []byte) (T, error) {
+		buffer := bytes.NewBuffer(data)
+		decoder := gob.NewDecoder(buffer)
+
+		var target T
+
+		err := decoder.Decode(&target)
+		if err != nil {
+			return target, fmt.Errorf("Error while decoding data, %v", err)
+		}
+		return target, err
+	}
+
+	go func() {
+		defer ch.Close()
+		for msg := range msgs {
+			if msg.ContentType != "application/gob" {
+				fmt.Printf("Incorrect content type, %v", msg.ContentType)
+				continue
+			}
+			target, err := unmarshaller(msg.Body)
+			if err != nil {
+				fmt.Printf("could not unmarshal message: %v\n", err)
+				continue
+			}
+			switch handler(target) {
+			case Ack:
+				msg.Ack(false)
+				fmt.Println("Ack")
+			case NackDiscard:
+				msg.Nack(false, false)
+				fmt.Println("NackDiscard")
+			case NackRequeue:
+				msg.Nack(false, true)
+				fmt.Println("NackRequeue")
+			}
+		}
+	}()
+	return nil
+}
+
 func SubscribeJSON[T any](
 	conn *amqp.Connection,
 	exchange,

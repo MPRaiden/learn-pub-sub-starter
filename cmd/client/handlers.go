@@ -93,7 +93,6 @@ func handlerWar(gs *gamelogic.GameState, ch *amqp.Channel) func(dw gamelogic.Rec
 				return pubsub.Ack
 			}
 			return pubsub.NackRequeue
-
 		case gamelogic.WarOutcomeOpponentWon:
 			_, winner, loser := gs.HandleWar(dw)
 			err := pubsub.PublishGob(ch, routing.ExchangePerilTopic, routingKey,
