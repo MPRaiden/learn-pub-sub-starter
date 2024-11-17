@@ -113,6 +113,11 @@ func SubscribeGob[T any](
 		return fmt.Errorf("could not declare and bind queue: %v", err)
 	}
 
+	err = ch.Qos(10, 0, true)
+	if err != nil {
+		return fmt.Errorf("Error while Qos, %v", err)
+	}
+
 	msgs, err := ch.Consume(
 		queue.Name, // queue
 		"",         // consumer
@@ -180,6 +185,10 @@ func SubscribeJSON[T any](
 		return fmt.Errorf("could not declare and bind queue: %v", err)
 	}
 
+	err = ch.Qos(10, 0, true)
+	if err != nil {
+		return fmt.Errorf("Error while Qos, %v", err)
+	}
 	msgs, err := ch.Consume(
 		queue.Name, // queue
 		"",         // consumer

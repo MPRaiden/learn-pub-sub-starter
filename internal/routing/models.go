@@ -7,7 +7,7 @@ type PlayingState struct {
 }
 
 type GameLog struct {
-	CurrentTime time.Time
-	Message     string
-	Username    string
+	CurrentTime time.Time `json:"current_time"`
+	Message     string    `json:"message"`
+	Username    string    `json:"username"`
 }

@@ -5,6 +5,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
+	"time"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -106,7 +108,18 @@ func main() {
 				} else if input[0] == "help" {
 					gamelogic.PrintClientHelp()
 				} else if input[0] == "spam" {
-					fmt.Println("Spamming not allowed yet!")
+					if len(input) < 2 {
+						fmt.Printf("Please provide second parameter, num of spam, e.g. 'spam <n>'")
+					}
+					n, err := strconv.Atoi(input[1])
+					if err != nil {
+						fmt.Println("Please provide a valid number")
+					} else {
+						for i := 0; i < n; i++ {
+							malStr := gamelogic.GetMaliciousLog()
+							err = publishGameLog(publishChannel, gameState.GetUsername(), malStr)
+						}
+					}
 				} else if input[0] == "quit" {
 					gamelogic.PrintQuit()
 					isRunning = false
@@ -116,4 +129,17 @@ func main() {
 			}
 		}
 	}
+}
+
+func publishGameLog(publishCh *amqp.Channel, username, msg string) error {
+	return pubsub.PublishGob(
+		publishCh,
+		routing.ExchangePerilTopic,
+		routing.GameLogSlug+"."+username,
+		routing.GameLog{
+			Username:    username,
+			CurrentTime: time.Now(),
+			Message:     msg,
+		},
+	)
 }
